@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opportunity Search</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    /* Spinner CSS */
+    .spinner-border {
+      width: 3rem;
+      height: 3rem;
+      border-width: 0.4em;
+    }
+
+    /* Card and slot styling */
+    .card {
+      margin-bottom: 1rem;
+    }
+    
+    .slot-dropdown {
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container mt-5">
+    <h1 class="text-center">Search Opportunities</h1>
+    
+    <form id="opportunityForm" class="mt-4">
+      <!-- Committee Input -->
+      <div class="mb-3">
+        <label for="committeeName" class="form-label">Enter Committee Name</label>
+        <input type="text" class="form-control" id="committeeName" placeholder="Enter committee (e.g., Indonesia)" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Search Opportunities</button>
+    </form>
+
+    <!-- Loading Spinner -->
+    <div id="loading" class="text-center mt-4" style="display: none;">
+      <div class="spinner-border" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p class="mt-2">Loading results...</p>
+    </div>
+
+    <!-- Filter Section -->
+    <div id="filters" class="mt-4">
+      <h2>Filters</h2>
+      <div class="mb-3">
+        <label for="homeLcFilter" class="form-label">Filter by Host LC</label>
+        <select id="homeLcFilter" class="form-select" >
+          <!-- Options will be added dynamically -->
+        </select>
+      </div>
+      <div class="mb-3">
+        <label for="projectFilter" class="form-label">Filter by Project</label>
+        <select id="projectFilter" class="form-select">
+          <!-- Options will be added dynamically -->
+        </select>
+      </div>
+      <button id="applyFilters" class="btn btn-primary">Apply Filters</button>
+    </div>
+
+    <!-- Display Results -->
+    <div id="results" class="mt-5">
+      <h2 class="text-center">Results</h2>
+      <div id="opportunitiesList" class="list-group"></div>
+      
+      <!-- Pagination Controls -->
+      <nav id="pagination" class="mt-4 d-flex flex-column align-items-center">
+        <ul class="pagination mb-2">
+          <li class="page-item" id="prevPage"><a class="page-link" href="#">Previous</a></li>
+          <li class="page-item" id="nextPage"><a class="page-link" href="#">Next</a></li>
+        </ul>
+        <ul id="pageNumbers" class="pagination"></ul>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    let opportunities = [];
+    let filteredOpportunities = [];
+    let currentPage = 1;
+    const resultsPerPage = 10;
+
+    document.getElementById('opportunityForm').addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      const committeeName = document.getElementById('committeeName').value;
+      
+      if (committeeName) {
+        // Show loading spinner
+        document.getElementById('loading').style.display = 'block';
+        
+        opportunities = await fetchOpportunitiesForAllProjects(committeeName);
+        filteredOpportunities = opportunities; // Initially, no filtering
+        currentPage = 1;
+        
+        // Hide loading spinner
+        document.getElementById('loading').style.display = 'none';
+        
+        populateHomeLcFilter();
+        populateProjectFilter();
+        displayOpportunities();
+      }
+    });
+
+    document.getElementById('applyFilters').addEventListener('click', function() {
+      applyFilters();
+      displayOpportunities();
+    });
+
+    async function fetchOpportunitiesForAllProjects(committeeName) {
+      const committeeId = await fetchCommitteeId(committeeName);
+      const allOpportunities = [];
+
+      for (const projectId of projectIds) {
+        const opportunities = await fetchOpportunitiesByProject(committeeId, projectId);
+        allOpportunities.push(...opportunities); // Combine all opportunities
+      }
+
+      return allOpportunities;
+    }
+
+    function displayOpportunities() {
+      const opportunitiesList = document.getElementById('opportunitiesList');
+      const pageNumbers = document.getElementById('pageNumbers');
+      opportunitiesList.innerHTML = '';
+      pageNumbers.innerHTML = '';
+
+      const totalResults = filteredOpportunities.length;
+      const totalPages = Math.ceil(totalResults / resultsPerPage);
+
+      const startIndex = (currentPage - 1) * resultsPerPage;
+      const endIndex = Math.min(startIndex + resultsPerPage, totalResults);
+
+      if (totalResults === 0) {
+        opportunitiesList.innerHTML = '<li class="list-group-item">No opportunities found.</li>';
+      } else {
+        for (let i = startIndex; i < endIndex; i++) {
+          const opportunity = filteredOpportunities[i];
+          const slotOptions = opportunity.slots.length > 0 
+            ? `<select class="form-select slot-dropdown">
+                 <option value="">Select a slot</option>
+                 ${opportunity.slots.map(slot => `
+                   <option value="${slot.start_date}-${slot.end_date}">
+                     ${slot.start_date} to ${slot.end_date}
+                   </option>`).join('')}
+               </select>`
+            : 'No slots available';
+
+          const cardItem = `
+            <div class="card">
+              <div class="card-body">
+                <h3 class="text-primary">${opportunity.project.project_name}</h3>
+                <p><strong>Project Description:</strong> ${opportunity.project_description}</p>
+                <p><strong>Host LC:</strong> ${opportunity.host_lc.name}</p>
+                <p><strong>Home MC:</strong> ${opportunity.home_mc.name}</p>
+                <p><strong>Slots:</strong><br>${slotOptions}</p>
+                <a href="https://aiesec.org/opportunity/global-volunteer/${opportunity.id}" target="_blank" class="btn btn-outline-primary">
+                  View Opportunity
+                </a>
+              </div>
+            </div>
+          `;
+          opportunitiesList.innerHTML += cardItem;
+        }
+      }
+
+      // Update pagination controls
+      document.getElementById('prevPage').style.display = currentPage > 1 ? 'block' : 'none';
+      document.getElementById('nextPage').style.display = currentPage < totalPages ? 'block' : 'none';
+
+      // Create numerical page buttons
+      for (let page = 1; page <= totalPages; page++) {
+        const pageItem = document.createElement('li');
+        pageItem.className = `page-item ${page === currentPage ? 'active' : ''}`;
+        pageItem.innerHTML = `<a class="page-link" href="#">${page}</a>`;
+        pageItem.addEventListener('click', function(event) {
+          event.preventDefault();
+          currentPage = page;
+          displayOpportunities();
+        });
+        pageNumbers.appendChild(pageItem);
+      }
+
+      document.getElementById('prevPage').addEventListener('click', function() {
+        if (currentPage > 1) {
+          currentPage--;
+          displayOpportunities();
+        }
+      });
+
+      document.getElementById('nextPage').addEventListener('click', function() {
+        if (currentPage < totalPages) {
+          currentPage++;
+          displayOpportunities();
+        }
+      });
+    }
+
+    function applyFilters() {
+      const homeLcFilter = Array.from(document.getElementById('homeLcFilter').selectedOptions).map(option => option.value);
+      const selectedProject = document.getElementById('projectFilter').value;
+
+      filteredOpportunities = opportunities.filter(opportunity => {
+        const isHomeLcMatch = homeLcFilter.length === 0 || homeLcFilter.includes(opportunity.host_lc.name);
+        const isProjectMatch = !selectedProject || opportunity.project.id === parseInt(selectedProject);
+
+        return isHomeLcMatch && isProjectMatch;
+      });
+    }
+
+    async function fetchOpportunitiesByProject(committeeId, projectId) {
+      const query = getOpportunitiesQuery(committeeId, projectId);
+
+      const response = await fetch("https://gis-api.aiesec.org/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `797149ff3e2ee6a8abc4f101a77c714caf9463dcb69be8bd5d53e0698064aa91`,
+        },
+        body: JSON.stringify({ query }),
+      });
+
+      const data = await response.json();
+      return data.data.allOpportunity.data;
+    }
+
+    function getOpportunitiesQuery(committeeId, projectId) {
+      return `
+        query GetAllOpportunitiesQuery {
+          allOpportunity: opportunities(
+            filters: {
+              programmes: [7],
+              committee: ${committeeId},
+              project_id: ${projectId}
+            }
+          ) {
+            data {
+              id
+              description
+              project_name
+              project_description
+              host_lc {
+                name
+              }
+              home_mc {
+                name
+              }
+              project {
+                id
+                project_name
+              }
+              slots {
+                start_date
+                end_date
+              }
+            }
+          }
+        }
+      `;
+    }
+
+    async function fetchCommitteeId(committeeName) {
+      const query = `
+        query {
+          committeeAutocomplete(q: "${committeeName}", tag:"MC") {
+            id
+            name
+          }
+        }
+      `;
+
+      const response = await fetch("https://gis-api.aiesec.org/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `797149ff3e2ee6a8abc4f101a77c714caf9463dcb69be8bd5d53e0698064aa91`,
+        },
+        body: JSON.stringify({ query }),
+      });
+
+      const data = await response.json();
+      return data.data.committeeAutocomplete[0]?.id; 
+    }
+
+    function populateHomeLcFilter() {
+      const homeLcFilter = document.getElementById('homeLcFilter');
+      const homeLcNames = [...new Set(opportunities.map(o => o.host_lc.name))];
+
+      homeLcFilter.innerHTML = homeLcNames.map(name => `<option value="${name}">${name}</option>`).join('');
+    }
+
+    function populateProjectFilter() {
+      const projectFilter = document.getElementById('projectFilter');
+      projectFilter.innerHTML = `
+        <option value="">Select Project</option>
+        ${projectIds.map(id => `<option value="${id}">${id}</option>`).join('')}
+      `;
+    }
+
+    // List of Project IDs
+    const projectIds = [
+      1302011, 1280513, 1280516, 1280520, 1285146, 
+      1280523, 1280390, 1280526, 1280515, 1280511, 
+      1281160, 1280518, 1280519, 1280521, 1285122, 
+      1286012, 1286870, 1280522
+    ];
+  </script>
+</body>
+</html>
