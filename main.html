@@ -67,9 +67,10 @@
                 <h1>Submit Your Details</h1>
             </div>
             <form id="userForm">
-                <div class="mb-3">
+                <div class="email-input mb-3">
                     <label for="email" class="form-label">Email:</label>
                     <input type="email" class="form-control" id="email" required>
+                    <small id="emailFeedback" class="email-input"></small>
                 </div>
 
                 <div class="mb-3">
@@ -281,7 +282,8 @@
                 .then(response => response.text())
                 .then(data => {
                     console.log('Success:', data);
-                    alert('Form submitted successfully');
+                    // Redirect to the thank you page
+                    window.location.href = 'thankyou.html'; // Update this with the actual path to your thank you page
                 })
                 .catch(error => {
                     console.error('Error:', error);
@@ -333,47 +335,112 @@
             }
         });
         fetch(
-          "https://script.google.com/macros/s/AKfycbzoc0FN7wI0E4Zh0ycN9QtEgJSo9jmor1w8XCNujCmMQQwGAKeaPTHAtN1o1ka32NTnrQ/exec",
-          {
-            redirect: "follow",
-            method: "POST",
-            body: formDataString,
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
-            },
-          }
-        )
-          .then(function (response) {
-            // Check if the request was successful
-            if (response) {
-              return response; // Assuming your script returns JSON response
-            } else {
-              throw new Error("Failed to submit the form.");
+            "https://script.google.com/macros/s/AKfycbzoc0FN7wI0E4Zh0ycN9QtEgJSo9jmor1w8XCNujCmMQQwGAKeaPTHAtN1o1ka32NTnrQ/exec",
+            {
+                redirect: "follow",
+                method: "POST",
+                body: formDataString,
+                headers: {
+                    "Content-Type": "text/plain;charset=utf-8",
+                },
             }
-          })
-          .then(function (data) {
-            // Display a success message
-            document.getElementById("message").textContent =
-              "Data submitted successfully!";
-            document.getElementById("message").style.display = "block";
-            document.getElementById("message").style.backgroundColor = "green";
-            document.getElementById("message").style.color = "beige";
-            document.getElementById("submit-button").disabled = false;
-            document.getElementById("form").reset();
+        )
+            .then(function (response) {
+                // Check if the request was successful
+                if (response) {
+                    return response; // Assuming your script returns JSON response
+                } else {
+                    throw new Error("Failed to submit the form.");
+                }
+            })
+            .then(function (data) {
+                // Display a success message
+                document.getElementById("message").textContent =
+                    "Data submitted successfully!";
+                document.getElementById("message").style.display = "block";
+                document.getElementById("message").style.backgroundColor = "green";
+                document.getElementById("message").style.color = "beige";
+                document.getElementById("submit-button").disabled = false;
+                document.getElementById("form").reset();
 
-            setTimeout(function () {
-              document.getElementById("message").textContent = "";
-              document.getElementById("message").style.display = "none";
-            }, 2600);
-          })
-          .catch(function (error) {
-            // Handle errors, you can display an error message here
-            console.error(error);
-            document.getElementById("message").textContent =
-              "An error occurred while submitting the form.";
-            document.getElementById("message").style.display = "block";
-          });
+                setTimeout(function () {
+                    document.getElementById("message").textContent = "";
+                    document.getElementById("message").style.display = "none";
+                }, 2600);
+            })
+            .catch(function (error) {
+                // Handle errors, you can display an error message here
+                console.error(error);
+                document.getElementById("message").textContent =
+                    "An error occurred while submitting the form.";
+                document.getElementById("message").style.display = "block";
+            });
     </script>
+    <script>
+        // Define the regular expression for email validation
+        const regex = new RegExp(
+            '^(([^<>()[\\]\\\\.,;:\\s@\\"]+(\\.[^<>()[\\]\\\\.,;:\\s@\\"]+)*)|' +
+            '(\\".+\\"))@((\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\])' +
+            "|(([a-zA-Z\\-0-9]+\\.)+[a-zA-Z]{2,}))$"
+        );
+
+        // Add event listener to the email input field
+        document.getElementById("email").addEventListener("input", async function () {
+            const email = this.value;
+            const container = this.closest('.email-input'); // Assume container class is 'email-input'
+            const emailFeedback = document.getElementById("emailFeedback");
+
+            // Validate email with regex
+            const isValidEmail = regex.test(email);
+            container.classList.toggle("valid", isValidEmail);
+
+            if (email && isValidEmail) {
+                try {
+                    // Send GraphQL request to check if the email is already registered
+                    const response = await fetch('https://gis-api.aiesec.org/graphql', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': '797149ff3e2ee6a8abc4f101a77c714caf9463dcb69be8bd5d53e0698064aa91' // Your access token
+                        },
+                        body: JSON.stringify({
+                            query: `
+                    query {
+                        checkPersonPresent(email: "${email}") {
+                            id
+                        }
+                    }
+                `
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    // Check if the email is already registered
+                    if (result && result.data && result.data.checkPersonPresent && result.data.checkPersonPresent.id) {
+                        emailFeedback.textContent = "Email is already registered.";
+                        emailFeedback.style.color = "red";
+                        container.classList.remove("valid");
+                    } else {
+                        emailFeedback.textContent = "Email is available.";
+                        emailFeedback.style.color = "green";
+                        container.classList.add("valid");
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    emailFeedback.textContent = "Error checking email.";
+                    emailFeedback.style.color = "red";
+                }
+            } else {
+                emailFeedback.textContent = isValidEmail ? "" : "Invalid email format.";
+                emailFeedback.style.color = isValidEmail ? "" : "red";
+                container.classList.remove("valid");
+            }
+        });
+
+    </script>
+
+
 </body>
 
 </html>
